@@ -70,7 +70,7 @@
   <button class="top-btn" id="homeBtn">⌂ Home</button>
   <div class="brand">O Level <span>Digital Textbook</span></div>
   <div class="top-spacer"></div>
-  <span class="live-pill offline" id="dbStatus">Local Demo</span><button class="top-btn" id="accountBtn">Admin Login</button><button class="top-btn hidden" id="adminBtn">⚙ Admin</button>
+  <span class="live-pill offline" id="dbStatus" title="Database connection status">Local Demo</span><button class="top-btn" id="accountBtn">Admin Login</button><button class="top-btn hidden" id="adminBtn">⚙ Admin</button>
 </header>
 
 <section id="homeView" class="page">
@@ -145,7 +145,7 @@
       <button class="side-btn" data-topic="Windows Utilities">Windows Utilities</button>
     </aside>
     <main class="center panel">
-      <section class="quiz-head"><div class="eyebrow" id="modeLabel">Practice Mode</div><div class="quiz-title">Introduction to Operating System</div><div class="sub"><span id="qCount">30</span> questions · <span id="attemptText">0/30 attempted</span></div><div class="progress"><i id="progressBar"></i></div></section>
+      <section class="quiz-head"><div class="eyebrow" id="modeLabel">Practice Mode</div><div class="quiz-title">Introduction to Operating System</div><div class="sub"><span id="qCount">0</span> questions · <span id="attemptText">0/30 attempted</span></div><div class="progress"><i id="progressBar"></i></div></section>
       <section class="qcard">
         <div class="practice-hint"><span id="topicHint">Topic: Introduction &amp; Core Role</span><span class="practice-seq" id="sequenceHint">Topic-wise sequence</span></div>
         <div class="topic-notes" id="topicNotesBox">
@@ -335,14 +335,47 @@ function uniqueTopics(){return [...new Set(bank.map(q=>String(q.topic||'Custom')
 function setDbStatus(text,online=false){const el=$('dbStatus');if(!el)return;el.textContent=text;el.classList.toggle('online',online);el.classList.toggle('offline',!online)}
 function mapRemoteRow(r){return {id:r.id,q:r.question,options:[r.option_a,r.option_b,r.option_c,r.option_d],correct:Number(r.correct_answer),topic:r.topic||'Custom',page:Number(r.source_page)||1,explanation:r.explanation||''}}
 async function initRemote(){
-  const cfg=window.SUPABASE_CONFIG||{}; if(!cfg.url||!cfg.publishableKey||cfg.url.includes('YOUR_')||cfg.publishableKey.includes('YOUR_')){setDbStatus('Local Demo',false);return}
-  try{supabaseClient=window.supabase.createClient(cfg.url,cfg.publishableKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}); remoteMode=true;
-    const {data:{session}}=await supabaseClient.auth.getSession(); currentUser=session?.user||null; await refreshAuth();
-    supabaseClient.auth.onAuthStateChange(async (_event,session)=>{currentUser=session?.user||null; await refreshAuth()});
-    const {data,error}=await supabaseClient.from('questions').select('*').eq('active',true).order('sort_order',{ascending:true});
-    if(error) throw error; if(data?.length){bank=data.map(mapRemoteRow); resetState(); saveBank(); updateHome(); renderTopics();}
-    setDbStatus('Online DB',true);
-  }catch(e){console.warn(e);remoteMode=false;setDbStatus('Local Demo',false);toast('Online database not connected; using local demo bank')}
+  const cfg=window.SUPABASE_CONFIG||{};
+  if(!cfg.url||!cfg.publishableKey||cfg.url.includes('YOUR_')||cfg.publishableKey.includes('YOUR_')){
+    setDbStatus('Local Demo',false);
+    return;
+  }
+  setDbStatus('Connecting…',false);
+  try{
+    if(!window.supabase || typeof window.supabase.createClient!=='function') throw new Error('Supabase library did not load');
+    supabaseClient=window.supabase.createClient(cfg.url.trim(),cfg.publishableKey.trim(),{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+    remoteMode=true;
+
+    const {data:{session}}=await supabaseClient.auth.getSession();
+    currentUser=session?.user||null;
+    await refreshAuth();
+    supabaseClient.auth.onAuthStateChange(async (_event,session)=>{
+      currentUser=session?.user||null;
+      await refreshAuth();
+    });
+
+    const {data,error}=await supabaseClient.from('questions')
+      .select('*')
+      .eq('active',true)
+      .eq('module_slug','m1')
+      .eq('chapter_slug','ch2')
+      .order('sort_order',{ascending:true});
+    if(error) throw error;
+    if(!Array.isArray(data)) throw new Error('Questions response was not an array');
+    if(data.length){
+      bank=data.map(mapRemoteRow);
+      resetState();
+      saveBank();
+      updateHome();
+      renderTopics();
+    }
+    setDbStatus(`Online DB · ${data.length} Q`,true);
+  }catch(e){
+    console.error('Supabase connection error:',e);
+    remoteMode=false;
+    setDbStatus('DB Error',false);
+    toast('Supabase connection failed: '+(e?.message||e));
+  }
 }
 async function refreshAuth(){
   isAdmin=false;
