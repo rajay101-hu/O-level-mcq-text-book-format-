@@ -1,4 +1,1 @@
-window.SUPABASE_CONFIG = {
-  url: '',
-  publishableKey: ''
-};
+window.SUPABASE_CONFIG = { url: '', publishableKey: '' };
